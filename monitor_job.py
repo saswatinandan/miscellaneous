@@ -4,6 +4,8 @@ import shlex
 import subprocess
 import getpass
 import argparse
+import os
+import pwd
 import json
 from pathlib import Path
 from datetime import datetime
@@ -19,7 +21,7 @@ CONFIG_PATTERN = (
 #OUTPUT_BASE = Path("/eos/user/s/snandan/hnl/test")
 LOG_DIRECTORY = "LogFiles/Logs"
 
-CHECK_INTERVAL = 300       # 5 minutes
+CHECK_INTERVAL = 1200       # 20 minutes
 MAX_RETRIES = 3
 RESOURCE_FACTOR = 2
 
@@ -194,10 +196,9 @@ def get_condor_status(cluster_ids):
 
 
 def rm_logfiles(config_dir):
-    print(config_dir)
-    print([f for f in unlink_logs[config_dir]])
-    for f in unlink_logs[config_dir]:
-        f.unlink()
+    files = set(unlink_logs.pop(config_dir, []))
+    for f in files:
+        f.unlink(missing_ok=True)
 
 # ============================================================
 # FAILURE DETECTION FROM LOG FILES
@@ -217,6 +218,7 @@ def get_failed_jobs(seen_logs):
 
     failed_jobs = {}
 
+    print('get_failed_jobs')
     memory_pattern = re.compile(
         r"out of memory|memory exceeded|oom-kill|"
         r"memory limit|exceeded memory",
@@ -242,6 +244,7 @@ def get_failed_jobs(seen_logs):
 
         log_dir = directory / LOG_DIRECTORY
 
+        print('directory: ', directory)
         memory_failed, old_memory = 0,[]
         time_failed, old_time = 0,[]
         other_failed = 0
@@ -258,29 +261,24 @@ def get_failed_jobs(seen_logs):
                     )
 
                     if signature not in seen_logs:
-
                         clusterid, process = log_file.name.split('_')[0], log_file.name.split('_')[1].split('.')[0]
                         job_id = f"{clusterid}.{process}"
                         
                         content = log_file.read_text(errors="ignore")
-
                         is_memory_failure = bool(memory_pattern.search(content))
                         is_time_failure = bool(time_pattern.search(content))
                         is_other_failure = bool(other_pattern.search(content))
-
                         if is_memory_failure:
                             memory_failed += 1
                             if not directory in unlink_logs.keys():
                                 unlink_logs[directory] = []
                             unlink_logs[directory].append(log_file)
-                            print('memory: ', directory, '\t', log_file)
                             old_memory.append(get_old_configuration(job_id, 'MemoryUsage'))
 
                         elif is_time_failure:
                             time_failed += 1
                             if not directory in unlink_logs.keys():
                                 unlink_logs[directory] = []
-                            print('time: ', directory, '\t', log_file)
                             unlink_logs[directory].append(log_file)
                             old_time.append(get_old_configuration(job_id, 'MaxRunTime'))
 
@@ -288,11 +286,8 @@ def get_failed_jobs(seen_logs):
                             other_failed += 1
                             if not directory in unlink_logs.keys():
                                 unlink_logs[directory] = []
-                            print('other: ', log_file)
                             unlink_logs[directory].append(log_file)
-
                         seen_logs.add(signature)
-        if directory in unlink_logs.keys(): print('1st: ', [f for f in unlink_logs[directory]])
         failed_jobs[directory.name] = {
             "memory": (memory_failed, max(old_memory, default=0)),
             "time": (time_failed, max(old_time, default=0)),
@@ -300,6 +295,37 @@ def get_failed_jobs(seen_logs):
         }
     return failed_jobs
 
+def update_proxy():
+
+    ProxyPath = os.path.join(pwd.getpwnam(username).pw_dir, 'private', "x509up")
+    subprocess.run([
+        "voms-proxy-init",
+        "--rfc",
+        "--voms", "cms",
+        "-valid", "192:00",
+        "--out", ProxyPath
+     ],
+    check=True
+    )
+    return None
+
+
+def find_job_failure_reason(error):
+
+    proxy_errors = [
+            "proxy expired",
+            "proxy has expired",
+            "expired proxy",
+            "credential expired",
+            "x509",
+            "unable to load proxy",
+            "no proxy",
+            "proxy not found"
+        ]
+
+    if any(msg in error.lower() for msg in proxy_errors):
+        print("Proxy problem detected. Updating proxy...")
+        update_proxy()
 
 # ============================================================
 # CREATE AND SUBMIT RETRY JDL
@@ -324,7 +350,6 @@ def resubmit_failed_jobs(
 
     content = original_jdl.read_text()
 
-
     if failure_type == "memory":
         resource_pattern = (
             r"(?im)^(\s*request_memory\s*=\s*)(\d+)(\s*)$"
@@ -344,31 +369,27 @@ def resubmit_failed_jobs(
     else:
         raise ValueError(f"Unknown failure type: {failure_type}")
 
-    new_resource = int(old_val or 0) * RESOURCE_FACTOR
-    print('new_resource: ', new_resource,'\t', old_val)
-    retry_number = 1
-    if failure_type != 'other':
-         retry_jdls = list(config_dir.glob(
-            f"{config_dir.name}_{failure_type}_retry*{new_resource}*.jdl"
-         ))
-         if retry_jdls:
-            retry_number = max(
-             [int(m.group(1)) for f in retry_jdls
-             if (m := re.search(r"_retry_(\d+_)?(\d+)$", f.stem))],
-              default=0
-            ) + 1
+    if failure_type == "other":
+        new_resource = 0
+        pattern = rf"^{re.escape(config_dir.name)}_other_retry_(\d+)$"
+        suffix_fmt = "_other_retry_{n}"
     else:
-        retry_jdls = list(config_dir.glob(
-            f"{config_dir.name}_{failure_type}_retry_*.jdl"
-         ))
-        if retry_jdls:
-            retry_number = max(
-                [int(m.group(1)) for f in retry_jdls
-                if (m := re.search(r"_retry_(\d+)$", f.stem))],
-                default=0
-             ) + 1
+        new_resource = int(old_val) * RESOURCE_FACTOR
+        pattern = (
+            rf"^{re.escape(config_dir.name)}_{failure_type}_retry_"
+            rf"{new_resource}_(\d+)$"
+        )
+        suffix_fmt = f"_{failure_type}_retry_{new_resource}_" + "{n}"
 
-    suffix = f"_{retry_type}_retry_{new_resource}_{retry_number}" if old_val else f"_{retry_type}_retry_{retry_number}"
+    print('new_resource: ', new_resource, '\t', old_val)
+
+    retry_number = max(
+        [int(m.group(1)) for f in config_dir.glob("*.jdl")
+         if (m := re.match(pattern, f.stem))],
+        default=0
+    ) + 1
+
+    suffix = suffix_fmt.format(n=retry_number) 
 
     if resource_pattern is not None:
          content = re.sub(
@@ -423,10 +444,23 @@ def resubmit_failed_jobs(
     print(result.stdout)
 
     if result.returncode != 0:
+
+        error = result.stderr + result.stdout
         print("Submission failed:")
         print(result.stderr)
-        sys.exit()
-        return None
+        find_job_failure_reason(error)
+        
+        result = subprocess.run(
+        ["condor_submit", str(new_jdl)],
+        cwd=config_dir,
+        capture_output=True,
+        text=True
+        )
+
+        print(result.stdout)
+
+        if result.returncode != 0:
+            sys.exit()
 
     cluster_match = re.search(
         r"submitted to cluster\s+(\d+)",
@@ -458,6 +492,24 @@ def wait_for_next_check():
 
     time.sleep(CHECK_INTERVAL)
 
+def release_condor_job():
+    
+    user = pwd.getpwuid(os.getuid()).pw_name
+
+    subprocess.run([
+        "condor_release",
+        "-constraint", f'Owner == "{user}"'
+    ], check=True)
+    
+    return None
+
+def rm_dir(config_name):
+
+    subprocess.run([
+        "rm", "-r", config_name],
+         check=True
+    )
+    return None
 
 # ============================================================
 # MAIN MONITORING FUNCTION
@@ -505,14 +557,6 @@ def main():
     print("\n========== PRODUCTION MONITOR ==========")
     print("Total expected jobs:", total_jobs)
 
-    retry_count = {}
-    for config_name in expected_jobs.keys():
-        retry_count[config_name] = {
-            'time_retry': 0,
-            'memory_retry': 0,
-            'other_retry': 0
-        }
-
     while True:
 
         print("\n\n========================================")
@@ -535,7 +579,12 @@ def main():
 
             total_finished += finished
 
-            missing = max(expected - finished, 0)
+            missing = expected - finished
+
+            if ( missing <= 0 ):
+                print(f"no missing file, removing {config_name}")
+                rm_dir(config_name)
+                continue
 
             total_missing += missing
 
@@ -593,8 +642,13 @@ def main():
         # ----------------------------------------------------
         # 5. Compare missing files with active/held jobs.
         # ----------------------------------------------------
-
+        
+        if held:
+            release_condor_job()
+        
         unaccounted = max(total_missing - queued, 0)
+
+        #assert( unaccounted >= 0 ), f"{total_missing}, {queued}"
 
         print("Unaccounted missing jobs:", unaccounted)
 
@@ -615,6 +669,13 @@ def main():
         # 6. Check retry limit.
         # ----------------------------------------------------
 
+        retry_count = {}
+        for config_name in expected_jobs.keys():
+            retry_count[config_name] = {
+                'time_retry': 0,
+                'memory_retry': 0,
+                'other_retry': 0
+            }
         print("\nINSPECTING FAILURE LOGS")
 
         failed_jobs = get_failed_jobs(seen_logs)
@@ -632,6 +693,8 @@ def main():
             finished = finished_jobs.get(config_name, 0)
 
             missing = expected - finished
+
+            assert( expected == (finished + missing) )
 
             assert( missing >= 0 )
 
