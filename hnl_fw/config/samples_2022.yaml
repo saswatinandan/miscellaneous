@@ -1,0 +1,49 @@
+# Sample list for 2022.
+#   kind:  data | bkg | signal
+#   era:   must be one of the eras in analysis.yaml
+#   Files come from DAS ("das: <dataset>") or from a local/EOS glob ("files_glob: <pattern>").
+#   MC samples need xsec_pb. Background samples have a "group" (processes in the datacard / stack plots).
+# All dataset names are examples: CHECK them in DAS (https://cmsweb.cern.ch/das) before use.
+
+samples:
+
+  # ---------------- data ----------------
+  data_Muon_2022C:
+    kind: data
+    era: "2022"
+    das: /Muon/Run2022C-22Sep2023-v1/NANOAOD        # CHECK
+  data_Muon_2022D:
+    kind: data
+    era: "2022"
+    das: /Muon/Run2022D-22Sep2023-v1/NANOAOD        # CHECK
+  data_Muon_2022E:
+    kind: data
+    era: "2022EE"
+    das: /Muon/Run2022E-22Sep2023-v1/NANOAOD        # CHECK
+  data_Muon_2022F:
+    kind: data
+    era: "2022EE"
+    das: /Muon/Run2022F-22Sep2023-v2/NANOAOD        # CHECK
+  data_Muon_2022G:
+    kind: data
+    era: "2022EE"
+    das: /Muon/Run2022G-22Sep2023-v1/NANOAOD        # CHECK
+
+  # ---------------- backgrounds (to be filled) ----------------
+  # Example:
+  # TTto2L2Nu_2022:
+  #   kind: bkg
+  #   era: "2022"
+  #   group: ttbar
+  #   xsec_pb: 98.0                                   # CHECK
+  #   das: /TTto2L2Nu_TuneCP5_13p6TeV_powheg-pythia8/Run3Summer22NanoAODv12-.../NANOAODSIM
+
+  # ---------------- signal ----------------
+  # One entry per mass / |V|^2 point and era. Example (fill path and cross section):
+  # HNL_M10_V2_6.30e-07_2022:
+  #   kind: signal
+  #   era: "2022"
+  #   mass: 10
+  #   v2: 6.30e-07
+  #   xsec_pb: 1.0                                    # FILL
+  #   files_glob: /eos/cms/store/group/phys_exotica/HNL/Run3/.../M-HeavyNeutrino_lljj_M10_V0.000794_mu_.../*.root

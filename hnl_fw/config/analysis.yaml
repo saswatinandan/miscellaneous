@@ -1,0 +1,29 @@
+# Global analysis configuration.
+# Values marked CHECK are placeholders: verify them with the relevant POG before using results.
+
+analysis: hnl_2022
+
+eras:
+  "2022":                      # Run2022 C, D (pre-EE)
+    lumi_fb: 7.98              # CHECK with Lumi POG
+    lumi_unc: 1.014            # lnN, CHECK
+    golden_json: /eos/user/c/cmsdqm/www/CAF/certification/Collisions22/Cert_Collisions2022_355100_362760_Golden.json  # CHECK path
+    triggers: []               # HLT path names without "HLT_", e.g. [IsoMu24]; empty = no trigger requirement
+  "2022EE":                    # Run2022 E, F, G (post-EE)
+    lumi_fb: 26.67             # CHECK with Lumi POG
+    lumi_unc: 1.014            # lnN, CHECK
+    golden_json: /eos/user/c/cmsdqm/www/CAF/certification/Collisions22/Cert_Collisions2022_355100_362760_Golden.json  # CHECK path
+    triggers: []
+
+# Histogram used as the fit variable in the datacards, and the categories to fit.
+fit:
+  histogram: mass_mm
+  categories: [inclusive]
+
+# xrootd redirector prepended to files found in DAS
+xrootd_redirector: root://cms-xrd-global.cern.ch/
+
+# Where batch jobs write their outputs (must be on EOS, reachable with xrdcp)
+output:
+  eos_dir: /eos/user/s/snandan/hnl_fw/outputs
+  eos_url: root://eosuser.cern.ch/

@@ -1,0 +1,19 @@
+# Samples for the local test (files made by tests/make_test_nano.py).
+samples:
+  data_test:
+    kind: data
+    era: "2022"
+    files_glob: tests/data/data/*.root
+  bkg_test:
+    kind: bkg
+    era: "2022"
+    group: test_bkg
+    xsec_pb: 10.0
+    files_glob: tests/data/bkg/*.root
+  HNL_M10_V2_1e-06_test:
+    kind: signal
+    era: "2022"
+    mass: 10
+    v2: 1.0e-06
+    xsec_pb: 1.0
+    files_glob: tests/data/signal/*.root

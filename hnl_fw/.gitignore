@@ -1,0 +1,10 @@
+# produced by the framework
+jobs/
+results/
+datacards/
+limits/
+plots/
+tests/data/
+tests/out/
+__pycache__/
+*.pkl

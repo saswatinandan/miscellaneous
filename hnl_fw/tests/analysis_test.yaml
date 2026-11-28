@@ -1,0 +1,15 @@
+# Configuration for the local test (tests/run_test.sh): no golden JSON, local output dir.
+analysis: hnl_test
+eras:
+  "2022":
+    lumi_fb: 7.98
+    lumi_unc: 1.014
+    golden_json: ""
+    triggers: [IsoMu24]
+fit:
+  histogram: mass_mm
+  categories: [inclusive]
+xrootd_redirector: ""
+output:
+  eos_dir: tests/out/jobs
+  eos_url: ""
