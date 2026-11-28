@@ -1,0 +1,4 @@
+plots/
+*.root
+*.png
+.ipynb_checkpoints/
